@@ -293,9 +293,10 @@ const ProfileScreen = () => {
               </Text>
             </TouchableOpacity>
             
+            {/* ИЗМЕНЕНИЕ ЗДЕСЬ: Заменен 'Settings' на 'SettingsProfileScreen' */}
             <TouchableOpacity 
               style={[styles.actionButton, styles.settingsButton]}
-              onPress={() => navigation.navigate('Settings')}
+              onPress={() => navigation.navigate('SettingsProfileScreen')}
             >
               <Icon name="settings" size={20} color="#888" />
               <Text style={styles.actionButtonText}>Настройки профиля</Text>
