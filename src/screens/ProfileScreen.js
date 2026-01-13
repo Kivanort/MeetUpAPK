@@ -152,10 +152,10 @@ const ProfileScreen = () => {
   return (
     <SafeAreaView style={styles.container}>
       <ScrollView style={styles.scrollView}>
-        {/* Кнопка назад */}
+        {/* Кнопка назад - изменена для перехода на MapScreen */}
         <TouchableOpacity 
           style={styles.backButton}
-          onPress={() => navigation.goBack()}
+          onPress={() => navigation.navigate('MapScreen')}
         >
           <Icon name="arrow-back" size={24} color="#FFF" />
         </TouchableOpacity>
