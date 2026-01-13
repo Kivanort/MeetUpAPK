@@ -22,9 +22,14 @@ import { useDispatch, useSelector } from 'react-redux';
 import { setLocation } from '../store/slices/userSlice';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 
+// Импортируем сервисы
+import PedometerService from '../services/PedometerService';
+import NotificationService from '../services/NotificationService';
+import ChatSystem from '../services/ChatSystem';
+
 const { width, height } = Dimensions.get('window');
 
-export default function MapScreen({ navigation }) { // Добавлен navigation проп
+export default function MapScreen({ navigation }) {
   const dispatch = useDispatch();
   const user = useSelector((state) => state.user);
   const friends = useSelector((state) => state.friends.list);
@@ -49,6 +54,22 @@ export default function MapScreen({ navigation }) { // Добавлен navigati
   const [selectedUser, setSelectedUser] = useState(null);
   const [currentRoute, setCurrentRoute] = useState(null);
   const [showFriendRoutes, setShowFriendRoutes] = useState(true);
+  
+  // Шагомер данные
+  const [pedometerData, setPedometerData] = useState({
+    steps: 0,
+    distance: 0,
+    calories: 0,
+    isActive: false,
+  });
+  
+  // Уведомления данные
+  const [notifications, setNotifications] = useState([]);
+  const [unreadCount, setUnreadCount] = useState(0);
+  
+  // Чаты данные
+  const [chats, setChats] = useState([]);
+  const [unreadMessagesCount, setUnreadMessagesCount] = useState(0);
   
   // Настройки фильтров
   const [filterSettings, setFilterSettings] = useState({
@@ -75,8 +96,9 @@ export default function MapScreen({ navigation }) { // Добавлен navigati
   // Ссылки
   const mapRef = useRef(null);
   
-  // Инициализация геолокации
+  // Инициализация
   useEffect(() => {
+    initializeServices();
     getLocation();
   }, []);
   
@@ -84,6 +106,9 @@ export default function MapScreen({ navigation }) { // Добавлен navigati
   useEffect(() => {
     const interval = setInterval(() => {
       updateLocation();
+      updatePedometerData();
+      checkNewNotifications();
+      checkNewMessages();
     }, 30000);
     
     return () => clearInterval(interval);
@@ -107,6 +132,28 @@ export default function MapScreen({ navigation }) { // Добавлен navigati
       }).start();
     }
   }, [balloonMenuVisible]);
+  
+  // Инициализация сервисов
+  const initializeServices = async () => {
+    try {
+      // Инициализация шагомера
+      const pedometerInitialized = await PedometerService.initialize();
+      if (pedometerInitialized) {
+        updatePedometerData();
+      }
+      
+      // Инициализация уведомлений
+      await NotificationService.initialize();
+      loadNotifications();
+      
+      // Инициализация чатов
+      await ChatSystem.initialize();
+      loadChats();
+      
+    } catch (error) {
+      console.error('Ошибка инициализации сервисов:', error);
+    }
+  };
   
   // Получение местоположения
   const getLocation = async () => {
@@ -157,6 +204,76 @@ export default function MapScreen({ navigation }) { // Добавлен navigati
     }
   };
   
+  // Обновление данных шагомера
+  const updatePedometerData = async () => {
+    try {
+      const data = await PedometerService.getCurrentData();
+      if (data) {
+        setPedometerData(data);
+      }
+    } catch (error) {
+      console.error('Ошибка получения данных шагомера:', error);
+    }
+  };
+  
+  // Загрузка уведомлений
+  const loadNotifications = async () => {
+    try {
+      const allNotifications = await NotificationService.getNotifications();
+      const unread = allNotifications.filter(n => !n.read).length;
+      
+      setNotifications(allNotifications);
+      setUnreadCount(unread);
+    } catch (error) {
+      console.error('Ошибка загрузки уведомлений:', error);
+    }
+  };
+  
+  // Проверка новых уведомлений
+  const checkNewNotifications = async () => {
+    try {
+      const hasNew = await NotificationService.checkForNewNotifications();
+      if (hasNew) {
+        loadNotifications();
+        // Показываем уведомление о новых сообщениях
+        if (Platform.OS === 'ios' || Platform.OS === 'android') {
+          Alert.alert('Новые уведомления', 'У вас есть новые уведомления');
+        }
+      }
+    } catch (error) {
+      console.error('Ошибка проверки уведомлений:', error);
+    }
+  };
+  
+  // Загрузка чатов
+  const loadChats = async () => {
+    try {
+      const chatList = await ChatSystem.getChatList();
+      let totalUnread = 0;
+      
+      chatList.forEach(chat => {
+        totalUnread += chat.unreadCount || 0;
+      });
+      
+      setChats(chatList);
+      setUnreadMessagesCount(totalUnread);
+    } catch (error) {
+      console.error('Ошибка загрузки чатов:', error);
+    }
+  };
+  
+  // Проверка новых сообщений
+  const checkNewMessages = async () => {
+    try {
+      const hasNewMessages = await ChatSystem.checkNewMessages();
+      if (hasNewMessages) {
+        loadChats();
+      }
+    } catch (error) {
+      console.error('Ошибка проверки новых сообщений:', error);
+    }
+  };
+  
   // Центрирование на пользователе
   const centerOnUser = () => {
     if (user.location && mapRef.current) {
@@ -182,6 +299,14 @@ export default function MapScreen({ navigation }) { // Добавлен navigati
   // Переключение режима инкогнито
   const toggleIncognitoMode = () => {
     setIsIncognitoMode(!isIncognitoMode);
+    
+    // Отправляем уведомление о смене режима
+    NotificationService.sendNotification({
+      title: 'Режим инкогнито',
+      message: isIncognitoMode ? 'Ваше местоположение теперь видно на карте' : 'Ваше местоположение скрыто на карте',
+      type: 'info',
+    });
+    
     Alert.alert(
       'Режим инкогнито',
       isIncognitoMode ? 'Ваше местоположение теперь видно на карте' : 'Ваше местоположение скрыто на карте'
@@ -226,29 +351,97 @@ export default function MapScreen({ navigation }) { // Добавлен navigati
     setRouteOverlayVisible(true);
     hideBalloonMenu();
     
+    // Отправляем уведомление о построении маршрута
+    NotificationService.sendNotification({
+      title: 'Маршрут построен',
+      message: `Маршрут до ${selectedUser.name} успешно построен`,
+      type: 'success',
+    });
+    
     Alert.alert('Маршрут построен', `Маршрут до ${selectedUser.name} успешно построен`);
   };
   
   // Открыть чат с пользователем
-  const openChat = () => {
+  const openChat = async () => {
     if (selectedUser) {
-      Alert.alert('Чат', `Открывается чат с ${selectedUser.name}`);
-      // В реальном приложении здесь будет навигация на экран чата
+      try {
+        // Получаем или создаем чат с пользователем
+        const chat = await ChatSystem.getOrCreateChat(selectedUser.id);
+        
+        // Открываем экран чата
+        navigation.navigate('ChatScreen', {
+          chatId: chat.id,
+          userId: selectedUser.id,
+          userName: selectedUser.name,
+        });
+        
+        // Обновляем список чатов
+        loadChats();
+        
+      } catch (error) {
+        console.error('Ошибка открытия чата:', error);
+        Alert.alert('Ошибка', 'Не удалось открыть чат');
+      }
+      
       setUserCardVisible(false);
       setBalloonMenuVisible(false);
     }
   };
   
-  // Создать встречу
-  const createMeetup = () => {
-    Alert.alert('Создание встречи', 'Функционал создания встречи');
-    // В реальном приложении здесь будет открытие формы создания встречи
+  // Открыть список чатов
+  const openChatList = () => {
+    setChatOverlayVisible(true);
   };
   
-  // Открыть шагомер
-  const openPedometer = () => {
-    Alert.alert('Шагомер', 'Функционал шагомера');
-    // В реальном приложении здесь будет открытие экрана шагомера
+  // Открыть оверлей шагомера
+  const openPedometerOverlay = () => {
+    setPedometerOverlayVisible(true);
+  };
+  
+  // Начать/остановить отсчет шагов
+  const togglePedometer = async () => {
+    try {
+      if (pedometerData.isActive) {
+        await PedometerService.stopTracking();
+      } else {
+        await PedometerService.startTracking();
+      }
+      
+      updatePedometerData();
+      
+    } catch (error) {
+      console.error('Ошибка переключения шагомера:', error);
+      Alert.alert('Ошибка', 'Не удалось переключить шагомер');
+    }
+  };
+  
+  // Сбросить счетчик шагов
+  const resetPedometer = async () => {
+    try {
+      await PedometerService.resetCounter();
+      updatePedometerData();
+      
+      NotificationService.sendNotification({
+        title: 'Шагомер сброшен',
+        message: 'Счетчик шагов был сброшен',
+        type: 'info',
+      });
+      
+    } catch (error) {
+      console.error('Ошибка сброса шагомера:', error);
+    }
+  };
+  
+  // Создать встречу
+  const createMeetup = () => {
+    // Отправляем уведомление о создании встречи
+    NotificationService.sendNotification({
+      title: 'Создание встречи',
+      message: 'Функционал создания встречи будет доступен в следующем обновлении',
+      type: 'info',
+    });
+    
+    Alert.alert('Создание встречи', 'Функционал создания встречи');
   };
   
   // Отфильтрованные друзья для отображения
@@ -343,11 +536,11 @@ export default function MapScreen({ navigation }) { // Добавлен navigati
         </View>
         <TouchableOpacity 
           style={styles.profileButton}
-          onPress={navigateToProfile} // Изменено: теперь вызывает навигацию на ProfileScreen
+          onPress={navigateToProfile}
         >
           <Icon name="person" size={24} color="#fff" />
           <View style={styles.notificationBadge}>
-            <Text style={styles.notificationBadgeText}>3</Text>
+            <Text style={styles.notificationBadgeText}>{unreadCount}</Text>
           </View>
         </TouchableOpacity>
       </View>
@@ -425,19 +618,30 @@ export default function MapScreen({ navigation }) { // Добавлен navigati
         <View style={styles.mapControls}>
           <TouchableOpacity 
             style={styles.mapControlButton}
-            onPress={() => setChatOverlayVisible(true)}
+            onPress={openChatList}
           >
             <Icon name="chat" size={24} color="#2CB4FF" />
-            <View style={styles.chatNotificationBadge}>
-              <Text style={styles.chatNotificationBadgeText}>5</Text>
-            </View>
+            {unreadMessagesCount > 0 && (
+              <View style={styles.chatNotificationBadge}>
+                <Text style={styles.chatNotificationBadgeText}>
+                  {unreadMessagesCount > 9 ? '9+' : unreadMessagesCount}
+                </Text>
+              </View>
+            )}
           </TouchableOpacity>
           
           <TouchableOpacity 
             style={styles.mapControlButton}
-            onPress={openPedometer}
+            onPress={openPedometerOverlay}
           >
             <Icon name="directions_walk" size={24} color="#2CB4FF" />
+            {pedometerData.steps > 0 && (
+              <View style={styles.pedometerIndicator}>
+                <Text style={styles.pedometerIndicatorText}>
+                  {pedometerData.steps}
+                </Text>
+              </View>
+            )}
           </TouchableOpacity>
           
           <TouchableOpacity 
@@ -566,11 +770,161 @@ export default function MapScreen({ navigation }) { // Добавлен navigati
               
               <TouchableOpacity 
                 style={[styles.userCardButton, styles.profileButton]}
-                onPress={navigateToProfile} // Изменено: теперь также использует навигацию на ProfileScreen
+                onPress={navigateToProfile}
               >
                 <Icon name="person" size={20} color="#fff" />
                 <Text style={styles.userCardButtonText}>Профиль</Text>
               </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+      
+      {/* Оверлей чатов */}
+      <Modal
+        visible={chatOverlayVisible}
+        animationType="slide"
+        transparent={true}
+        onRequestClose={() => setChatOverlayVisible(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.chatOverlay}>
+            <View style={styles.chatHeader}>
+              <Text style={styles.chatTitle}>Чаты</Text>
+              <TouchableOpacity 
+                style={styles.chatClose}
+                onPress={() => setChatOverlayVisible(false)}
+              >
+                <Icon name="close" size={24} color="#fff" />
+              </TouchableOpacity>
+            </View>
+            
+            <ScrollView style={styles.chatList}>
+              {chats.length > 0 ? (
+                chats.map(chat => (
+                  <TouchableOpacity 
+                    key={chat.id}
+                    style={styles.chatItem}
+                    onPress={() => {
+                      setChatOverlayVisible(false);
+                      navigation.navigate('ChatScreen', {
+                        chatId: chat.id,
+                        userId: chat.userId,
+                        userName: chat.userName,
+                      });
+                    }}
+                  >
+                    <View style={styles.chatAvatar}>
+                      <Text style={styles.chatAvatarText}>
+                        {chat.userName ? chat.userName.substring(0, 2).toUpperCase() : '??'}
+                      </Text>
+                    </View>
+                    <View style={styles.chatInfo}>
+                      <Text style={styles.chatName}>{chat.userName}</Text>
+                      <Text style={styles.chatLastMessage} numberOfLines={1}>
+                        {chat.lastMessage || 'Нет сообщений'}
+                      </Text>
+                    </View>
+                    <View style={styles.chatMeta}>
+                      <Text style={styles.chatTime}>
+                        {chat.lastMessageTime || ''}
+                      </Text>
+                      {chat.unreadCount > 0 && (
+                        <View style={styles.chatUnreadBadge}>
+                          <Text style={styles.chatUnreadText}>
+                            {chat.unreadCount}
+                          </Text>
+                        </View>
+                      )}
+                    </View>
+                  </TouchableOpacity>
+                ))
+              ) : (
+                <Text style={styles.noChatsText}>Нет активных чатов</Text>
+              )}
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
+      
+      {/* Оверлей шагомера */}
+      <Modal
+        visible={pedometerOverlayVisible}
+        animationType="slide"
+        transparent={true}
+        onRequestClose={() => setPedometerOverlayVisible(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.pedometerOverlay}>
+            <View style={styles.pedometerHeader}>
+              <Text style={styles.pedometerTitle}>Шагомер</Text>
+              <TouchableOpacity 
+                style={styles.pedometerClose}
+                onPress={() => setPedometerOverlayVisible(false)}
+              >
+                <Icon name="close" size={24} color="#fff" />
+              </TouchableOpacity>
+            </View>
+            
+            <View style={styles.pedometerContent}>
+              <View style={styles.pedometerStats}>
+                <View style={styles.pedometerStat}>
+                  <Text style={styles.pedometerStatValue}>{pedometerData.steps}</Text>
+                  <Text style={styles.pedometerStatLabel}>Шагов</Text>
+                </View>
+                <View style={styles.pedometerStat}>
+                  <Text style={styles.pedometerStatValue}>
+                    {pedometerData.distance.toFixed(2)}
+                  </Text>
+                  <Text style={styles.pedometerStatLabel}>Км</Text>
+                </View>
+                <View style={styles.pedometerStat}>
+                  <Text style={styles.pedometerStatValue}>
+                    {pedometerData.calories.toFixed(0)}
+                  </Text>
+                  <Text style={styles.pedometerStatLabel}>Кал</Text>
+                </View>
+              </View>
+              
+              <View style={styles.pedometerControls}>
+                <TouchableOpacity 
+                  style={[
+                    styles.pedometerControlButton,
+                    pedometerData.isActive && styles.pedometerControlButtonActive
+                  ]}
+                  onPress={togglePedometer}
+                >
+                  <Icon 
+                    name={pedometerData.isActive ? "pause" : "play_arrow"} 
+                    size={24} 
+                    color="#fff" 
+                  />
+                  <Text style={styles.pedometerControlText}>
+                    {pedometerData.isActive ? "Пауза" : "Старт"}
+                  </Text>
+                </TouchableOpacity>
+                
+                <TouchableOpacity 
+                  style={styles.pedometerControlButton}
+                  onPress={resetPedometer}
+                >
+                  <Icon name="refresh" size={24} color="#fff" />
+                  <Text style={styles.pedometerControlText}>Сбросить</Text>
+                </TouchableOpacity>
+              </View>
+              
+              <View style={styles.pedometerTips}>
+                <Text style={styles.pedometerTipsTitle}>Советы:</Text>
+                <Text style={styles.pedometerTipsText}>
+                  • 10,000 шагов в день - рекомендованная норма
+                </Text>
+                <Text style={styles.pedometerTipsText}>
+                  • Ходьба улучшает сердечно-сосудистую систему
+                </Text>
+                <Text style={styles.pedometerTipsText}>
+                  • Регулярная активность снижает стресс
+                </Text>
+              </View>
             </View>
           </View>
         </View>
@@ -1034,6 +1388,7 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.3,
     shadowRadius: 12,
     elevation: 4,
+    position: 'relative',
   },
   mapControlButtonActive: {
     backgroundColor: '#2CB4FF',
@@ -1052,6 +1407,22 @@ const styles = StyleSheet.create({
   chatNotificationBadgeText: {
     color: '#fff',
     fontSize: 10,
+    fontWeight: 'bold',
+  },
+  pedometerIndicator: {
+    position: 'absolute',
+    bottom: -5,
+    right: -5,
+    backgroundColor: '#34eb89',
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  pedometerIndicatorText: {
+    color: '#fff',
+    fontSize: 8,
     fontWeight: 'bold',
   },
   routeControls: {
@@ -1252,6 +1623,189 @@ const styles = StyleSheet.create({
   userCardButtonText: {
     fontSize: 14,
     fontWeight: '600',
+    color: '#fff',
+  },
+  // Оверлей чатов
+  chatOverlay: {
+    backgroundColor: '#181F31',
+    borderRadius: 16,
+    padding: 20,
+    width: '90%',
+    height: '80%',
+    maxWidth: 500,
+  },
+  chatHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 20,
+  },
+  chatTitle: {
+    fontSize: 20,
+    fontWeight: '600',
+    color: '#fff',
+  },
+  chatClose: {
+    backgroundColor: 'rgba(255, 255, 255, 0.1)',
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  chatList: {
+    flex: 1,
+  },
+  chatItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 15,
+    backgroundColor: 'rgba(255, 255, 255, 0.05)',
+    borderRadius: 12,
+    marginBottom: 10,
+  },
+  chatAvatar: {
+    width: 50,
+    height: 50,
+    borderRadius: 25,
+    backgroundColor: '#2CB4FF',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 15,
+  },
+  chatAvatarText: {
+    color: '#fff',
+    fontSize: 18,
+    fontWeight: '600',
+  },
+  chatInfo: {
+    flex: 1,
+  },
+  chatName: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#fff',
+    marginBottom: 4,
+  },
+  chatLastMessage: {
+    fontSize: 14,
+    color: '#9FAFD4',
+  },
+  chatMeta: {
+    alignItems: 'flex-end',
+  },
+  chatTime: {
+    fontSize: 12,
+    color: '#9FAFD4',
+    marginBottom: 5,
+  },
+  chatUnreadBadge: {
+    backgroundColor: '#FF4444',
+    minWidth: 20,
+    height: 20,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 5,
+  },
+  chatUnreadText: {
+    color: '#fff',
+    fontSize: 10,
+    fontWeight: 'bold',
+  },
+  noChatsText: {
+    textAlign: 'center',
+    color: '#9FAFD4',
+    fontSize: 16,
+    marginTop: 50,
+  },
+  // Оверлей шагомера
+  pedometerOverlay: {
+    backgroundColor: '#181F31',
+    borderRadius: 16,
+    padding: 20,
+    width: '90%',
+    maxWidth: 400,
+  },
+  pedometerHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 20,
+  },
+  pedometerTitle: {
+    fontSize: 20,
+    fontWeight: '600',
+    color: '#fff',
+  },
+  pedometerClose: {
+    backgroundColor: 'rgba(255, 255, 255, 0.1)',
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  pedometerContent: {
+    alignItems: 'center',
+  },
+  pedometerStats: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    width: '100%',
+    marginBottom: 30,
+  },
+  pedometerStat: {
+    alignItems: 'center',
+  },
+  pedometerStatValue: {
+    fontSize: 32,
+    fontWeight: 'bold',
+    color: '#34eb89',
+    marginBottom: 5,
+  },
+  pedometerStatLabel: {
+    fontSize: 14,
+    color: '#9FAFD4',
+  },
+  pedometerControls: {
+    flexDirection: 'row',
+    gap: 15,
+    marginBottom: 30,
+  },
+  pedometerControlButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+    backgroundColor: 'rgba(52, 235, 137, 0.2)',
+    borderRadius: 12,
+  },
+  pedometerControlButtonActive: {
+    backgroundColor: '#34eb89',
+  },
+  pedometerControlText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#fff',
+  },
+  pedometerTips: {
+    width: '100%',
+    backgroundColor: 'rgba(255, 255, 255, 0.05)',
+    borderRadius: 12,
+    padding: 15,
+  },
+  pedometerTipsTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#fff',
+    marginBottom: 10,
+  },
+  pedometerTipsText: {
+    fontSize: 14,
+    color: '#9FAFD4',
+    marginBottom: 5,
   },
   balloonMenu: {
     position: 'absolute',
@@ -1468,6 +2022,3 @@ const styles = StyleSheet.create({
     fontSize: 12,
   },
 });
-
-// Примечание: Для градиентного текста в React Native требуется дополнительная библиотека
-// Например, react-native-linear-gradient или mask-view
