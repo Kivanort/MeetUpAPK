@@ -132,7 +132,8 @@ export default function AuthScreen({ navigation }) {
     try {
       const user = await AsyncStorage.getItem('current_user');
       if (user) {
-        navigation.replace('Main');
+        // Исправлено: переход на MapScreen вместо Main
+        navigation.replace('MapScreen');
       }
     } catch (error) {
       console.log('Ошибка проверки авторизации:', error);
@@ -163,7 +164,8 @@ export default function AuthScreen({ navigation }) {
         };
         
         await AsyncStorage.setItem('current_user', JSON.stringify(user));
-        navigation.replace('Main');
+        // Исправлено: переход на MapScreen вместо Main
+        navigation.replace('MapScreen');
         return;
       }
       
@@ -179,7 +181,8 @@ export default function AuthScreen({ navigation }) {
       
       if (user) {
         await AsyncStorage.setItem('current_user', JSON.stringify(user));
-        navigation.replace('Main');
+        // Исправлено: переход на MapScreen вместо Main
+        navigation.replace('MapScreen');
       } else {
         setErrors({ login: 'Неверный email или пароль' });
       }
@@ -253,7 +256,13 @@ export default function AuthScreen({ navigation }) {
       
       // Показываем уведомление об успешной регистрации
       Alert.alert('Успех!', 'Регистрация прошла успешно', [
-        { text: 'OK', onPress: () => navigation.replace('Main') }
+        { 
+          text: 'OK', 
+          onPress: () => {
+            // Исправлено: переход на MapScreen вместо Main
+            navigation.replace('MapScreen');
+          }
+        }
       ]);
       
     } catch (error) {
