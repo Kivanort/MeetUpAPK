@@ -111,14 +111,8 @@ const ProfileScreen = () => {
   };
 
   const shareProfile = async () => {
-    try {
-      const result = await Share.share({
-        message: `Присоединяйся ко мне в MeetUP! https://kivanort.github.io/@Ivan`,
-        title: 'MeetUP - Приложение для друзей на карте',
-      });
-    } catch (error) {
-      Alert.alert('Ошибка', 'Не удалось поделиться профилем');
-    }
+    // Открываем экран ShareProfileScreen вместо стандартного шаринга
+    navigation.navigate('ShareProfileScreen');
   };
 
   const shareQRCode = async () => {
