@@ -228,10 +228,10 @@ const ShareProfileScreen = () => {
 
       <ScrollView contentContainerStyle={styles.scrollContainer}>
         <View style={styles.shareContainer}>
-          {/* Кнопка закрытия */}
+          {/* Кнопка закрытия - ВЕДЕТ В MAPSCREEN.JS */}
           <TouchableOpacity 
             style={styles.closeButton}
-            onPress={() => navigation.goBack()}
+            onPress={() => navigation.navigate('MapScreen')}
           >
             <Icon name="close" size={24} color="#FFF" />
           </TouchableOpacity>
