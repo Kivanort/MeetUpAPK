@@ -24,7 +24,7 @@ import Icon from 'react-native-vector-icons/MaterialIcons';
 
 const { width, height } = Dimensions.get('window');
 
-export default function MapScreen() {
+export default function MapScreen({ navigation }) { // Добавлен navigation проп
   const dispatch = useDispatch();
   const user = useSelector((state) => state.user);
   const friends = useSelector((state) => state.friends.list);
@@ -326,6 +326,11 @@ export default function MapScreen() {
     })
   ).current;
   
+  // Навигация на экран профиля
+  const navigateToProfile = () => {
+    navigation.navigate('ProfileScreen');
+  };
+  
   return (
     <SafeAreaView style={styles.container}>
       <StatusBar barStyle="light-content" backgroundColor="#0B1222" />
@@ -338,7 +343,7 @@ export default function MapScreen() {
         </View>
         <TouchableOpacity 
           style={styles.profileButton}
-          onPress={() => Alert.alert('Профиль', 'Переход в профиль')}
+          onPress={navigateToProfile} // Изменено: теперь вызывает навигацию на ProfileScreen
         >
           <Icon name="person" size={24} color="#fff" />
           <View style={styles.notificationBadge}>
@@ -561,7 +566,7 @@ export default function MapScreen() {
               
               <TouchableOpacity 
                 style={[styles.userCardButton, styles.profileButton]}
-                onPress={() => Alert.alert('Профиль', 'Переход в профиль пользователя')}
+                onPress={navigateToProfile} // Изменено: теперь также использует навигацию на ProfileScreen
               >
                 <Icon name="person" size={20} color="#fff" />
                 <Text style={styles.userCardButtonText}>Профиль</Text>
